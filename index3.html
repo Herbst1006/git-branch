@@ -1,0 +1,255 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>数字华容道</title>
+    <style>
+        canvas {
+            border: 1px solid black;
+            display: block;
+            margin: 20px auto;
+        }
+
+        #controls {
+            text-align: center;
+        }
+    </style>
+</head>
+
+<body>
+    <div id="controls">
+        <button onclick="generateNewPuzzle()">生成新题目</button>
+        <button onclick="checkCurrentAnswer()">检查答案</button>
+        <button onclick="showSolution()">显示解决方案</button>
+    </div>
+    <canvas id="puzzleCanvas"></canvas>
+    <script>
+        class State {
+            constructor(board, zeroRow, zeroCol, path = '') {
+                this.board = board.map(arr => arr.slice());
+                this.zeroRow = zeroRow;
+                this.zeroCol = zeroCol;
+                this.path = path;
+            }
+
+            equals(other) {
+                for (let i = 0; i < this.board.length; ++i)
+                    for (let j = 0; j < this.board[i].length; ++j)
+                        if (this.board[i][j] !== other.board[i][j])
+                            return false;
+                return true;
+            }
+
+            copy() {
+                return new State(this.board, this.zeroRow, this.zeroCol, this.path);
+            }
+        }
+
+        function isSolvable(board, N) {
+            let inversions = 0;
+            for (let i = 0; i < board.length - 1; ++i) {
+                for (let j = i + 1; j < board.length; ++j) {
+                    if (board[i] && board[j] && board[i] > board[j]) {
+                        ++inversions;
+                    }
+                }
+            }
+            if (N % 2 === 1) {
+                return inversions % 2 === 0;
+            } else {
+                const blankRow = Math.floor(board.indexOf(0) / N);
+                return (inversions + blankRow) % 2 === 1;
+            }
+        }
+
+        function backtrack(state, goal, visited, maxDepth, depth = 0) {
+            if (depth > maxDepth) return null;
+            if (goal.equals(state)) return state.path;
+
+            visited.add(JSON.stringify(state.board));
+
+            const neighbors = getNeighbors(state);
+            for (let neighbor of neighbors) {
+                if (!visited.has(JSON.stringify(neighbor.board))) {
+                    const result = backtrack(neighbor, goal, visited, maxDepth, depth + 1);
+                    if (result) return result;
+                }
+            }
+
+            visited.delete(JSON.stringify(state.board));
+            return null;
+        }
+
+        function iterativeDeepeningBacktrack(start, goal) {
+            let maxDepth = 0;
+            while (true) {
+                const visited = new Set();
+                const result = backtrack(start, goal, visited, maxDepth);
+                if (result) return result;
+                maxDepth++;
+            }
+        }
+
+        function getNeighbors(state) {
+            let neighbors = [];
+            let dr = [1, -1, 0, 0];
+            let dc = [0, 0, 1, -1];
+            let moves = "下上右左";
+
+            for (let i = 0; i < 4; ++i) {
+                let nr = state.zeroRow + dr[i];
+                let nc = state.zeroCol + dc[i];
+                if (nr >= 0 && nr < state.board.length && nc >= 0 && nc < state.board.length) {
+                    let newBoard = state.board.map(arr => arr.slice());
+                    [newBoard[state.zeroRow][state.zeroCol], newBoard[nr][nc]] =
+                        [newBoard[nr][nc], newBoard[state.zeroRow][state.zeroCol]];
+                    neighbors.push(new State(newBoard, nr, nc, state.path + moves[i]));
+                }
+            }
+
+            return neighbors;
+        }
+
+        class NumberPuzzle {
+            constructor(N) {
+                this.N = N;
+                this.TILE_SIZE = 80;
+                this.WINDOW_SIZE = this.N * this.TILE_SIZE;
+                this.TILE_COLOR = '#ffffff';
+                this.EMPTY_TILE_COLOR = '#000000';
+                this.TEXT_COLOR = '#000000';
+                this.BORDER_COLOR = '#000000';
+
+                this.GOAL_STATE = Array.from({ length: this.N }, (_, i) =>
+                    Array.from({ length: this.N }, (_, j) => (i * this.N + j + 1) % (this.N * this.N))
+                );
+
+                this.initialState = [];
+                this.currentState = [];
+                this.zeroRow = 0;
+                this.zeroCol = 0;
+
+                this.generatePuzzle();
+                this.currentState = JSON.parse(JSON.stringify(this.initialState));
+                this.findZeroPosition();
+            }
+
+            generatePuzzle() {
+                const board = [];
+                for (let i = 0; i < this.N * this.N; ++i) {
+                    board.push(i);
+                }
+                do {
+                    board.sort(() => Math.random() - 0.5);
+                } while (!isSolvable(board, this.N));
+
+                for (let i = 0; i < this.N; ++i) {
+                    this.initialState.push(board.slice(i * this.N, (i + 1) * this.N));
+                }
+            }
+
+            findZeroPosition() {
+                for (let i = 0; i < this.N; ++i) {
+                    for (let j = 0; j < this.N; ++j) {
+                        if (this.currentState[i][j] === 0) {
+                            this.zeroRow = i;
+                            this.zeroCol = j;
+                        }
+                    }
+                }
+            }
+
+            renderTile(ctx, value, x, y) {
+                ctx.fillStyle = value === 0 ? this.EMPTY_TILE_COLOR : this.TILE_COLOR;
+                ctx.fillRect(x, y, this.TILE_SIZE, this.TILE_SIZE);
+
+                // Draw tile border
+                ctx.strokeStyle = this.BORDER_COLOR;
+                ctx.strokeRect(x, y, this.TILE_SIZE, this.TILE_SIZE);
+
+                if (value !== 0) {
+                    ctx.fillStyle = this.TEXT_COLOR;
+                    ctx.font = '30px Arial';
+                    ctx.textAlign = 'center';
+                    ctx.textBaseline = 'middle';
+                    ctx.fillText(value, x + this.TILE_SIZE / 2, y + this.TILE_SIZE / 2);
+                }
+            }
+
+            renderPuzzle(ctx) {
+                ctx.clearRect(0, 0, this.WINDOW_SIZE, this.WINDOW_SIZE);
+                for (let i = 0; i < this.N; ++i) {
+                    for (let j = 0; j < this.N; ++j) {
+                        this.renderTile(ctx, this.currentState[i][j], j * this.TILE_SIZE, i * this.TILE_SIZE);
+                    }
+                }
+            }
+
+            move(row, col) {
+                if ((Math.abs(row - this.zeroRow) === 1 && col === this.zeroCol) ||
+                    (Math.abs(col - this.zeroCol) === 1 && row === this.zeroRow)) {
+                    [this.currentState[this.zeroRow][this.zeroCol], this.currentState[row][col]] =
+                        [this.currentState[row][col], this.currentState[this.zeroRow][this.zeroCol]];
+                    this.zeroRow = row;
+                    this.zeroCol = col;
+                }
+            }
+
+            checkWin() {
+                for (let i = 0; i < this.N; ++i) {
+                    for (let j = 0; j < this.N; ++j) {
+                        if (this.currentState[i][j] !== this.GOAL_STATE[i][j]) {
+                            return false;
+                        }
+                    }
+                }
+                return true;
+            }
+        }
+
+        let currentPuzzle;
+
+        function generateNewPuzzle(N) {
+            currentPuzzle = new NumberPuzzle(N);
+            const canvas = document.getElementById('puzzleCanvas');
+            const ctx = canvas.getContext('2d');
+            canvas.width = currentPuzzle.WINDOW_SIZE;
+            canvas.height = currentPuzzle.WINDOW_SIZE;
+            currentPuzzle.renderPuzzle(ctx);
+        }
+
+        function checkCurrentAnswer() {
+            if (currentPuzzle.checkWin()) {
+                alert('答案正确！你完成了拼图！');
+            } else {
+                alert('答案错误！请继续努力！');
+            }
+        }
+
+        function showSolution() {
+            const start = new State(currentPuzzle.currentState, currentPuzzle.zeroRow, currentPuzzle.zeroCol);
+            const goal = new State(currentPuzzle.GOAL_STATE, currentPuzzle.N - 1, currentPuzzle.N - 1);
+            const solutionPath = iterativeDeepeningBacktrack(start, goal);
+            alert(`解决方案路径: ${solutionPath}`);
+        }
+
+        window.onload = () => {
+            generateNewPuzzle(3); // 默认生成3x3的拼图
+            document.getElementById('puzzleCanvas').addEventListener('click', function (event) {
+                const rect = this.getBoundingClientRect();
+                const x = event.clientX - rect.left;
+                const y = event.clientY - rect.top;
+                const row = Math.floor(y / currentPuzzle.TILE_SIZE);
+                const col = Math.floor(x / currentPuzzle.TILE_SIZE);
+                currentPuzzle.move(row, col);
+                //const ctx = this.getContext('2d');
+                //currentPuzzle.renderPuzzle(ctx);
+            });
+        };
+
+    </script>
+</body>
+
+</html>
