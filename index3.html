@@ -244,7 +244,7 @@
                 const row = Math.floor(y / currentPuzzle.TILE_SIZE);
                 const col = Math.floor(x / currentPuzzle.TILE_SIZE);
                 currentPuzzle.move(row, col);
-                //const ctx = this.getContext('2d');
+                const ctx = this.getContext('2d');
                 //currentPuzzle.renderPuzzle(ctx);
             });
         };
